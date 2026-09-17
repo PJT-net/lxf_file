@@ -3,229 +3,321 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>简易三国杀 - 还原基础机制</title>
+    <title>三国杀 - 武将版</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",sans-serif;}
         body{background:#2c2c2c;color:#fff;padding:20px;}
-        h1{text-align:center;margin-bottom:20px;color:#ffd700;}
+        h1{text-align:center;margin-bottom:15px;color:#ffd700;}
         .container{max-width:1100px;margin:0 auto;}
-        .board{background:#1a4d2e;border-radius:12px;padding:20px;margin-bottom:20px;min-height:220px;}
+        .board{background:#1a4d2e;border-radius:12px;padding:20px;margin-bottom:15px;min-height:220px;}
         .player-info{display:flex;justify-content:space-between;margin-bottom:15px;gap:20px;flex-wrap:wrap;}
         .hp{font-size:22px;color:#ff4444;font-weight:bold;}
-        .card-area{display:flex;gap:12px;flex-wrap:wrap;margin-top:15px;}
+        .hero-name{font-size:18px;color:#ffd700;font-weight:bold;}
+        .skill-tip{font-size:13px;color:#9fdc9f;margin-top:4px;}
+        .card-area{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
         .card{
-            width:110px;height:160px;background:#fff;color:#222;
+            width:105px;height:150px;background:#fff;color:#222;
             border-radius:8px;padding:8px;cursor:pointer;
-            box-shadow:0 3px 8px #0003;transition:transform 0.2s;
+            box-shadow:0 3px 8px #0003;transition:transform 0.15s;
         }
-        .card:hover{transform:translateY(-8px);}
-        .card .name{font-weight:bold;font-size:16px;text-align:center;margin-bottom:6px;}
-        .card .type{font-size:13px;color:#666;text-align:center;}
-        .card .desc{font-size:12px;margin-top:8px;line-height:1.4}
-        .btn{padding:10px 20px;background:#c41e3a;color:white;border:none;border-radius:6px;font-size:16px;cursor:pointer;margin:5px;}
+        .card:hover{transform:translateY(-6px);}
+        .card .name{font-weight:bold;font-size:15px;text-align:center;margin-bottom:5px;}
+        .card .type{font-size:12px;color:#666;text-align:center;}
+        .card .desc{font-size:11px;margin-top:6px;line-height:1.35}
+        .btn{padding:9px 18px;background:#c41e3a;color:white;border:none;border-radius:6px;font-size:15px;cursor:pointer;margin:4px;}
         .btn:disabled{background:#666;cursor:not-allowed;}
-        .log{margin-top:15px;background:#111;padding:12px;border-radius:8px;height:140px;overflow-y:auto;font-size:14px;color:#ccc;}
+        .btn.hero-btn{background:#3a6ea5;}
+        .btn.hero-btn.selected{background:#ffd700;color:#222;}
+        .log{margin-top:12px;background:#111;padding:12px;border-radius:8px;height:150px;overflow-y:auto;font-size:14px;color:#ccc;}
+        .select-area{background:#333;border-radius:10px;padding:15px;margin-bottom:15px;}
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>简易三国杀（基础规则）</h1>
-        <div class="board">
-            <div class="player-info">
-                <div>你的血量：<span class="hp" id="myHp">4</span></div>
-                <div>敌方血量：<span class="hp" id="enemyHp">4</span></div>
-                <div>当前阶段：<span id="phase">等待你的回合</span></div>
-            </div>
-            <div>你的手牌：</div>
-            <div class="card-area" id="handCards"></div>
-        </div>
-        <button class="btn" id="startTurnBtn" onclick="startMyTurn()">开始你的回合</button>
-        <button class="btn" id="endTurnBtn" onclick="endMyTurn()" disabled>结束回合</button>
-        <div class="log" id="gameLog">游戏开始！按【开始你的回合】进入自己回合。
-            <br>规则：回合分摸牌→出牌→弃牌；【杀】需要对方出【闪】抵消，否则扣1血。手牌上限=当前血量。</div>
+<div class="container">
+    <h1>三国杀 · 武将对战版</h1>
+
+    <div class="select-area">
+        <h3 style="margin-bottom:10px;">第一步：拣选你嘅武将</h3>
+        <div id="heroSelect" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
     </div>
 
-<script>
-const cardList = [
-    {name:"杀",type:"基本牌",desc:"出牌阶段对目标使用，对方不出闪则扣1血"},
-    {name:"闪",type:"基本牌",desc:"受到【杀】时可以打出，抵消伤害，不能主动打出"},
-    {name:"桃",type:"基本牌",desc:"出牌阶段使用，回复1点血量，上限4"},
-    {name:"过河拆桥",type:"锦囊牌",desc:"出牌阶段使用，拆掉敌方一张手牌"},
-    {name:"无中生有",type:"锦囊牌",desc:"出牌阶段使用，摸2张牌"}
-]
+    <div class="board">
+        <div class="player-info">
+            <div>
+                <div class="hero-name" id="myHeroName">未选武将</div>
+                <div>血量：<span class="hp" id="myHp">4</span></div>
+                <div class="skill-tip" id="mySkill"></div>
+            </div>
+            <div>
+                <div style="text-align:right;">
+                    <div class="hero-name" id="enemyHeroName">敌方未选</div>
+                    <div>血量：<span class="hp" id="enemyHp">4</span></div>
+                    <div class="skill-tip" id="enemySkill"></div>
+                </div>
+            </div>
+        </div>
+        <div>你的手牌：</div>
+        <div class="card-area" id="handCards"></div>
+    </div>
 
-let myHp = 4;
-let enemyHp = 4;
-let myHand = [];
-let enemyHand = [];
+    <button class="btn" id="startTurnBtn" onclick="startMyTurn()">开始你的回合</button>
+    <button class="btn" id="endTurnBtn" onclick="endMyTurn()" disabled>结束回合</button>
+    <button class="btn" onclick="restartGame()">重新开始</button>
+
+    <div class="log" id="gameLog">
+        游戏开始！请先拣选一个武将。<br>
+        规则：回合分摸牌→出牌→弃牌；【杀】需要对方出【闪】抵消；手牌上限=当前血量。
+    </div>
+</div>
+
+<script>
+// ===== 武将库 =====
+const heroList = [
+    {name:"刘备", hp:4, skill:"仁德：每回合可主动交一张手牌，摸一张牌"},
+    {name:"关羽", hp:4, skill:"武圣：【闪】可当【杀】打出"},
+    {name:"张飞", hp:4, skill:"咆哮：出牌阶段可出无限张【杀】"},
+    {name:"郭嘉", hp:3, skill:"遗计：受到伤害时，立即摸两张牌"}
+];
+
+// ===== 卡牌库 =====
+const cardList = [
+    {name:"杀", type:"基本牌", desc:"对敌方出杀，对方不出闪则扣1血"},
+    {name:"闪", type:"基本牌", desc:"抵消【杀】，不可主动打出"},
+    {name:"桃", type:"基本牌", desc:"回复1点血量（不超上限）"},
+    {name:"过河拆桥", type:"锦囊", desc:"拆掉敌方一张手牌"},
+    {name:"无中生有", type:"锦囊", desc:"立即摸2张牌"}
+];
+
+// ===== 游戏状态 =====
+let myHero = null;
+let enemyHero = null;
+let myHp = 4, enemyHp = 4;
+let myHand = [], enemyHand = [];
 let isMyTurn = false;
+let killUsedThisTurn = 0;   // 本回合已出杀次数（张飞=0 即不限）
+
 const logDom = document.getElementById("gameLog");
 const handDom = document.getElementById("handCards");
-const phaseDom = document.getElementById("phase");
 const startBtn = document.getElementById("startTurnBtn");
 const endBtn = document.getElementById("endTurnBtn");
 
-function addLog(text){
-    logDom.innerHTML += "<p>"+text+"</p>";
+function addLog(t){
+    logDom.innerHTML += "<p>" + t + "</p>";
     logDom.scrollTop = logDom.scrollHeight;
 }
-
 function randomCard(){
     return {...cardList[Math.floor(Math.random()*cardList.length)]};
 }
-
-function draw(target, num){
-    for(let i=0;i<num;i++){
-        target.push(randomCard());
-    }
+function draw(arr, n){
+    for(let i=0;i<n;i++) arr.push(randomCard());
+}
+function hasKillLimit(){
+    // 张飞咆哮：无出杀限制；其他人每回合最多1张杀
+    return myHero && myHero.name !== "张飞";
 }
 
-function renderHand(){
-    handDom.innerHTML = "";
-    myHand.forEach((card,idx)=>{
-        const div = document.createElement("div");
-        div.className = "card";
-        div.innerHTML = `
-            <div class="name">${card.name}</div>
-            <div class="type">${card.type}</div>
-            <div class="desc">${card.desc}</div>
-        `;
-        if(isMyTurn) div.onclick = ()=>playCard(idx);
-        handDom.appendChild(div);
-    })
+// ===== 武将选择 =====
+function renderHeroSelect(){
+    const box = document.getElementById("heroSelect");
+    box.innerHTML = "";
+    heroList.forEach((h, i)=>{
+        const b = document.createElement("button");
+        b.className = "btn hero-btn";
+        b.innerText = `${h.name}（${h.hp}血）`;
+        b.title = h.skill;
+        b.onclick = ()=>selectHero(i);
+        box.appendChild(b);
+    });
 }
+function selectHero(idx){
+    myHero = heroList[idx];
+    myHp = myHero.hp;
+    document.getElementById("myHeroName").innerText = "你：" + myHero.name;
+    document.getElementById("myHp").innerText = myHp;
+    document.getElementById("mySkill").innerText = "技能：" + myHero.skill;
+    addLog(`你拣选咗【${myHero.name}】`);
 
-// 玩家回合开始
-function startMyTurn(){
-    if(isMyTurn) return;
-    isMyTurn = true;
-    phaseDom.innerText = "摸牌阶段";
-    startBtn.disabled = true;
-    endBtn.disabled = false;
-    addLog("=====你的回合开始【摸牌阶段】=====");
-    draw(myHand,2);
-    addLog("你摸2张牌");
-    phaseDom.innerText = "出牌阶段，点击卡牌打出";
+    const eIdx = Math.floor(Math.random()*heroList.length);
+    enemyHero = heroList[eIdx];
+    enemyHp = enemyHero.hp;
+    document.getElementById("enemyHeroName").innerText = "敌方：" + enemyHero.name;
+    document.getElementById("enemyHp").innerText = enemyHp;
+    document.getElementById("enemySkill").innerText = "技能：" + enemyHero.skill;
+    addLog(`敌方武将系【${enemyHero.name}】`);
+
+    draw(myHand, 4);
+    draw(enemyHand, 4);
     renderHand();
 }
 
-// 打出手牌
+// ===== 渲染手牌 =====
+function renderHand(){
+    handDom.innerHTML = "";
+    myHand.forEach((c, idx)=>{
+        const d = document.createElement("div");
+        d.className = "card";
+        d.innerHTML = `<div class="name">${c.name}</div>
+                       <div class="type">${c.type}</div>
+                       <div class="desc">${c.desc}</div>`;
+        if(isMyTurn) d.onclick = ()=>playCard(idx);
+        handDom.appendChild(d);
+    });
+}
+
+// ===== 回合 =====
+function startMyTurn(){
+    if(!myHero){ addLog("请先拣选武将！"); return; }
+    if(isMyTurn) return;
+    isMyTurn = true;
+    killUsedThisTurn = 0;
+    startBtn.disabled = true;
+    endBtn.disabled = false;
+    addLog("===== 你的回合开始（摸牌阶段）=====");
+    draw(myHand, 2);
+    renderHand();
+}
+
 function playCard(idx){
     if(!isMyTurn) return;
     const c = myHand[idx];
+
+    // 闪不能主动出
     if(c.name === "闪"){
-        addLog("【闪】唔可以主动打出，只能被【杀】嘅时候使用！");
+        addLog("【闪】唔可以主动打出！");
         return;
     }
+    // 关羽武圣：闪当杀 —— 已在主动打出被拦截，这里提示
+    if(c.name === "杀" && hasKillLimit() && killUsedThisTurn >= 1){
+        addLog("你本回合已经出过【杀】（张飞咆哮先可以无限出）！");
+        return;
+    }
+
     addLog(`你打出【${c.name}】`);
+
     if(c.name === "杀"){
-        // 敌方判断是否出闪
-        let hasShan = enemyHand.some(x=>x.name==="闪");
-        if(hasShan){
-            addLog("敌方打出【闪】，抵消呢次【杀】！");
-            let shanIdx = enemyHand.findIndex(x=>x.name==="闪");
+        killUsedThisTurn++;
+        let shanIdx = enemyHand.findIndex(x=>x.name==="闪");
+        if(shanIdx !== -1){
+            addLog("敌方打出【闪】抵消！");
             enemyHand.splice(shanIdx,1);
         }else{
-            enemyHp -=1;
-            document.getElementById("enemyHp").innerText = enemyHp;
-            addLog("敌方冇闪，受到1点伤害！");
+            damageEnemy(1);
         }
     }else if(c.name === "桃"){
-        if(myHp<4){
-            myHp +=1;
+        if(myHp < myHero.hp){
+            myHp++;
             document.getElementById("myHp").innerText = myHp;
-            addLog("你使用桃，回复1点血量");
+            addLog("你食桃，回血1点！");
         }else{
-            addLog("血量已满，唔可以用桃！");
+            addLog("血量已满，食唔到桃！");
             return;
         }
     }else if(c.name === "无中生有"){
-        draw(myHand,2);
+        draw(myHand, 2);
         addLog("无中生有，摸2张牌！");
     }else if(c.name === "过河拆桥"){
-        if(enemyHand.length>0){
+        if(enemyHand.length > 0){
             enemyHand.pop();
-            addLog("拆掉敌方一张手牌");
+            addLog("拆掉敌方一张手牌！");
         }else{
-            addLog("敌方冇手牌可以拆！");
+            addLog("敌方冇手牌可拆！");
             return;
         }
     }
     myHand.splice(idx,1);
     renderHand();
-    checkGameOver();
+    checkOver();
 }
 
-// 结束回合，弃牌阶段
+// 敌方扣血（含郭嘉遗计）
+function damageEnemy(n){
+    enemyHp -= n;
+    document.getElementById("enemyHp").innerText = enemyHp;
+    addLog(`敌方受到 ${n} 点伤害！`);
+    if(enemyHero && enemyHero.name === "郭嘉"){
+        draw(enemyHand, 2);
+        addLog("✨ 敌方郭嘉【遗计】触发，摸2张牌！");
+    }
+}
+// 我方扣血（含我方郭嘉遗计）
+function damageMe(n){
+    myHp -= n;
+    document.getElementById("myHp").innerText = myHp;
+    addLog(`你受到 ${n} 点伤害！`);
+    if(myHero && myHero.name === "郭嘉"){
+        draw(myHand, 2);
+        addLog("✨ 你的【遗计】触发，摸2张牌！");
+        renderHand();
+    }
+}
+
 function endMyTurn(){
     if(!isMyTurn) return;
-    phaseDom.innerText = "弃牌阶段";
-    addLog("【弃牌阶段】手牌上限 = 你当前血量");
-    let maxHand = myHp;
-    while(myHand.length > maxHand){
+    addLog("【弃牌阶段】手牌上限 = 当前血量 " + myHp);
+    while(myHand.length > myHp){
         myHand.pop();
-        addLog("手牌过多，自动弃掉一张");
+        addLog("手牌过多，自动弃一张");
     }
     renderHand();
     isMyTurn = false;
     startBtn.disabled = false;
     endBtn.disabled = true;
-    addLog("你的回合结束，轮到敌方回合");
-    setTimeout(enemyTurn,800);
+    addLog("你的回合结束，敌方行动中…");
+    setTimeout(enemyTurn, 800);
 }
 
-// 敌方回合AI
+// ===== 敌方AI =====
 function enemyTurn(){
-    addLog("=====敌方回合开始=====");
-    draw(enemyHand,2);
-    phaseDom.innerText = "敌方出牌阶段";
-    // 敌方AI出牌
-    let killIndex = enemyHand.findIndex(x=>x.name==="杀");
-    if(killIndex !== -1){
-        addLog("敌方对你打出【杀】！");
-        let hasShan = myHand.some(x=>x.name==="闪");
-        if(hasShan){
-            addLog("你有【闪】，自动打出，抵消伤害！");
-            let shanIdx = myHand.findIndex(x=>x.name==="闪");
-            myHand.splice(shanIdx,1);
+    addLog("===== 敌方回合开始 =====");
+    draw(enemyHand, 2);
+
+    // 敌方出杀（简单AI：最多出1张）
+    let killIdx = enemyHand.findIndex(x=>x.name==="杀");
+    if(killIdx !== -1){
+        addLog("敌方对你出【杀】！");
+        enemyHand.splice(killIdx,1);
+        let myShan = myHand.findIndex(x=>x.name==="闪");
+        if(myShan !== -1){
+            addLog("你自动打出【闪】抵消！");
+            myHand.splice(myShan,1);
             renderHand();
         }else{
-            myHp -=1;
-            document.getElementById("myHp").innerText = myHp;
-            addLog("你冇闪，受到1点伤害！");
+            damageMe(1);
         }
-        enemyHand.splice(killIndex,1);
     }
-    // 敌方自救桃
-    if(enemyHp <=2){
-        let peachIdx = enemyHand.findIndex(x=>x.name==="桃");
-        if(peachIdx !== -1){
-            enemyHand.splice(peachIdx,1);
-            enemyHp +=1;
+
+    // 敌方残血食桃
+    if(enemyHp <= 2){
+        let peach = enemyHand.findIndex(x=>x.name==="桃");
+        if(peach !== -1 && enemyHp < enemyHero.hp){
+            enemyHand.splice(peach,1);
+            enemyHp++;
             document.getElementById("enemyHp").innerText = enemyHp;
             addLog("敌方食桃回血！");
         }
     }
+
     // 敌方弃牌
-    let enemyMax = enemyHp;
-    while(enemyHand.length>enemyMax) enemyHand.pop();
-    addLog("敌方回合结束，轮到你");
-    phaseDom.innerText = "等待你的回合";
-    checkGameOver();
+    while(enemyHand.length > enemyHp) enemyHand.pop();
+    addLog("敌方回合结束，轮到你。");
+    checkOver();
 }
 
-function checkGameOver(){
+function checkOver(){
     if(enemyHp <= 0){
         addLog("🎉 敌方阵亡，你胜利！");
-        startBtn.disabled = true;
-        endBtn.disabled = true;
-    }else if(myHp <=0){
+        startBtn.disabled = true; endBtn.disabled = true;
+    }else if(myHp <= 0){
         addLog("💀 你阵亡，游戏失败！");
-        startBtn.disabled = true;
-        endBtn.disabled = true;
+        startBtn.disabled = true; endBtn.disabled = true;
     }
 }
-renderHand();
+
+function restartGame(){
+    location.reload();
+}
+
+renderHeroSelect();
 </script>
 </body>
 </html>
