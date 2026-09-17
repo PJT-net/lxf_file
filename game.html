@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简易三国杀卡牌小游戏</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",sans-serif;}
+        body{background:#2c2c2c;color:#fff;padding:20px;}
+        h1{text-align:center;margin-bottom:20px;color:#ffd700;}
+        .container{max-width:1100px;margin:0 auto;}
+        .board{background:#1a4d2e;border-radius:12px;padding:20px;margin-bottom:20px;min-height:220px;}
+        .player-info{display:flex;justify-content:space-between;margin-bottom:15px;}
+        .hp{font-size:22px;color:#ff4444;font-weight:bold;}
+        .card-area{display:flex;gap:12px;flex-wrap:wrap;margin-top:15px;}
+        .card{
+            width:110px;height:160px;background:#fff;color:#222;
+            border-radius:8px;padding:8px;cursor:pointer;
+            box-shadow:0 3px 8px #0003;transition:transform 0.2s;
+        }
+        .card:hover{transform:translateY(-8px);}
+        .card .name{font-weight:bold;font-size:16px;text-align:center;margin-bottom:6px;}
+        .card .type{font-size:13px;color:#666;text-align:center;}
+        .card .desc{font-size:12px;margin-top:8px;line-height:1.4}
+        .btn{padding:10px 20px;background:#c41e3a;color:white;border:none;border-radius:6px;font-size:16px;cursor:pointer;margin:5px;}
+        .log{margin-top:15px;background:#111;padding:12px;border-radius:8px;height:140px;overflow-y:auto;font-size:14px;color:#ccc;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>简易三国杀卡牌对战</h1>
+        <div class="board">
+            <div class="player-info">
+                <div>你的血量：<span class="hp" id="myHp">4</span></div>
+                <div>敌方血量：<span class="hp" id="enemyHp">4</span></div>
+            </div>
+            <div>手牌区：</div>
+            <div class="card-area" id="handCards"></div>
+        </div>
+        <button class="btn" onclick="drawCard()">摸一张牌</button>
+        <button class="btn" onclick="enemyTurn()">敌方回合</button>
+        <div class="log" id="gameLog">游戏开始！你可以点击【摸一张牌】抽手牌，点击卡牌打出。</div>
+    </div>
+
+<script>
+// 卡牌库
+const cardList = [
+    {name:"杀",type:"攻击牌",desc:"对敌方造成1点伤害"},
+    {name:"闪",type:"防御牌",desc:"抵消【杀】的伤害"},
+    {name:"桃",type:"恢复牌",desc:"回复1点血量"},
+    {name:"过河拆桥",type:"锦囊牌",desc:"移除敌方一张手牌"},
+    {name:"无中生有",type:"锦囊牌",desc:"摸2张牌"}
+]
+let myHp = 4;
+let enemyHp = 4;
+let hand = [];
+const logDom = document.getElementById("gameLog");
+const handDom = document.getElementById("handCards");
+
+// 写日志
+function addLog(text){
+    logDom.innerHTML += "<p>"+text+"</p>";
+    logDom.scrollTop = logDom.scrollHeight;
+}
+
+// 抽牌
+function drawCard(){
+    if(hand.length >= 7){
+        addLog("手牌已满！");
+        return;
+    }
+    const randomCard = cardList[Math.floor(Math.random()*cardList.length)];
+    hand.push({...randomCard});
+    addLog("你摸到："+randomCard.name);
+    renderHand();
+}
+
+// 渲染手牌
+function renderHand(){
+    handDom.innerHTML = "";
+    hand.forEach((card,idx)=>{
+        const div = document.createElement("div");
+        div.className = "card";
+        div.innerHTML = `
+            <div class="name">${card.name}</div>
+            <div class="type">${card.type}</div>
+            <div class="desc">${card.desc}</div>
+        `;
+        div.onclick = ()=>playCard(idx);
+        handDom.appendChild(div);
+    })
+}
+
+// 打出手牌
+function playCard(idx){
+    const c = hand[idx];
+    if(c.name === "杀"){
+        enemyHp -= 1;
+        document.getElementById("enemyHp").innerText = enemyHp;
+        addLog("你打出【杀】，敌方受到1点伤害！");
+    }else if(c.name === "桃"){
+        if(myHp<4){
+            myHp +=1;
+            document.getElementById("myHp").innerText = myHp;
+            addLog("你打出【桃】，回复1点血量！");
+        }else addLog("血量已满，不能使用桃！");
+    }else if(c.name === "无中生有"){
+        drawCard();
+        drawCard();
+        addLog("你打出【无中生有】，摸两张牌！");
+    }else if(c.name === "过河拆桥"){
+        addLog("你打出【过河拆桥】，拆掉敌方牌！");
+    }else if(c.name === "闪"){
+        addLog("闪只能在受到【杀】时使用，不能主动打出");
+        return;
+    }
+    hand.splice(idx,1);
+    renderHand();
+    checkGameOver();
+}
+
+// 敌方回合
+function enemyTurn(){
+    addLog("---敌方回合开始---");
+    const r = Math.random();
+    if(r>0.4){
+        myHp -=1;
+        document.getElementById("myHp").innerText = myHp;
+        addLog("敌方对你打出【杀】，你受到1点伤害！");
+    }else{
+        addLog("敌方摸牌，选择防御，没有攻击。");
+    }
+    checkGameOver();
+}
+
+// 判断胜负
+function checkGameOver(){
+    if(enemyHp <= 0){
+        addLog("🎉 敌方血量归零，你胜利！");
+    }else if(myHp <=0){
+        addLog("💀 你的血量归零，游戏失败！");
+    }
+}
+</script>
+</body>
+</html>
