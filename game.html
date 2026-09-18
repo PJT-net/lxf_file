@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>三国杀 · 完整版</title>
+    <title>三国杀</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",sans-serif;}
         body{background:#2c2c2c;color:#fff;padding:20px;}
@@ -30,7 +30,7 @@
         .btn:disabled{background:#666;cursor:not-allowed;}
         .btn.hero-btn{background:#3a6ea5;}
         .btn.hero-btn.selected{background:#ffd700;color:#222;}
-        .btn.skill-btn{background:#7b2cbf;}
+        .btn.skill-btn{background:#7b2cbf;display:none;}
         .log{margin-top:12px;background:#111;padding:12px;border-radius:8px;height:150px;overflow-y:auto;font-size:14px;color:#ccc;}
         .select-area{background:#333;border-radius:10px;padding:15px;margin-bottom:15px;}
         .target-tip{color:#ffd700;font-size:16px;margin:10px 0;}
@@ -52,7 +52,7 @@
                 <div>血量：<span class="hp" id="myHp">4</span></div>
                 <div class="skill-tip" id="mySkill"></div>
                 <div class="equip-area">装备：<span id="myEquip">无</span></div>
-                <button class="btn skill-btn" id="rendBtn" onclick="useRende()" disabled>仁德</button>
+                <button class="btn skill-btn" id="rendBtn" onclick="useRende()">仁德</button>
             </div>
             <div>
                 <div style="text-align:right;">
@@ -81,7 +81,7 @@
 <script>
 // ===== 武将库 =====
 const heroList = [
-    {name:"刘备", hp:4, skill:"仁德：出牌阶段，交一张手牌，摸一张牌"},
+    {name:"刘备", hp:4, skill:"仁德：出牌阶段，可以拣手牌送给敌方，每送出2张牌，自己摸1张牌"},
     {name:"关羽", hp:4, skill:"武圣：出牌阶段，可以将【闪】当做【杀】打出"},
     {name:"张飞", hp:4, skill:"咆哮：出牌阶段可出无限张【杀】"},
     {name:"郭嘉", hp:3, skill:"遗计：受到伤害时，立即摸两张牌"},
@@ -94,7 +94,7 @@ const cardList = [
     {name:"杀", type:"基本牌", desc:"拣目标使用，对方不出闪则扣1血"},
     {name:"闪", type:"基本牌", desc:"抵消【杀】，不可主动打出（赵云/关羽可转换）"},
     {name:"桃", type:"基本牌", desc:"回复1点血量（唔超上限）"},
-    {name:"过河拆桥", type:"锦囊", desc:"拣目标，拆掉敌方一张手牌"},
+    {name:"过河拆桥", type:"锦囊", desc:"拣目标，可以拆对方手牌或者装备"},
     {name:"无中生有", type:"锦囊", desc:"立即摸2张牌"},
     {name:"南蛮入侵", type:"锦囊", desc:"敌方必须打出【杀】，否则扣1点伤害"},
     {name:"决斗", type:"锦囊", desc:"双方轮流出杀，冇杀嘅一方扣1血"},
@@ -112,6 +112,9 @@ let enemyWeapon = null, enemyArmor = null;
 let isMyTurn = false;
 let killUsedThisTurn = 0;
 let waitingTarget = null;
+let gameOver = false;
+let selectedHandIndex = -1; // 选中手牌，用于仁德送牌
+let rendeGiveCount = 0; // 仁德本回合送出牌数量
 
 const logDom = document.getElementById("gameLog");
 const handDom = document.getElementById("handCards");
@@ -152,6 +155,9 @@ function renderHeroSelect(){
 function selectHero(idx){
     myHero = heroList[idx];
     myHp = myHero.hp;
+    gameOver = false;
+    rendeGiveCount = 0;
+    selectedHandIndex = -1;
     document.getElementById("myHeroName").innerText = "你：" + myHero.name;
     document.getElementById("myHp").innerText = myHp;
     document.getElementById("mySkill").innerText = "技能：" + myHero.skill;
@@ -169,6 +175,13 @@ function selectHero(idx){
     enemyWeapon = null; enemyArmor = null;
     refreshEquipUI();
 
+    // 只有刘备先显示仁德按钮
+    if(myHero.name === "刘备"){
+        rendBtn.style.display = "inline-block";
+    }else{
+        rendBtn.style.display = "none";
+    }
+
     draw(myHand, 4);
     draw(enemyHand, 4);
     renderHand();
@@ -184,30 +197,69 @@ function renderHand(){
     myHand.forEach((c, idx)=>{
         const d = document.createElement("div");
         d.className = "card";
+        if(idx === selectedHandIndex) d.classList.add("selected");
         d.innerHTML = `<div class="name">${c.name}</div>
                        <div class="type">${c.type}</div>
                        <div class="desc">${c.desc}</div>`;
-        if(isMyTurn) d.onclick = ()=>playCard(idx);
+        if(isMyTurn && !gameOver){
+            d.onclick = ()=>{
+                // 如果而家准备用仁德，就只做选中手牌
+                if(selectedHandIndex === -1 && waitingTarget === "rende"){
+                    selectedHandIndex = idx;
+                    renderHand();
+                    targetTip.innerText = "👉 拣好牌啦！点敌方区域送牌";
+                }else{
+                    playCard(idx);
+                }
+            };
+        }
         handDom.appendChild(d);
     });
 }
 
 // ===== 刘备仁德技能 =====
 function useRende(){
+    if(gameOver) return;
     if(!isMyTurn || myHero.name !== "刘备") return;
-    if(myHand.length < 1){
-        addLog("手牌唔够，无法发动仁德！");
+    if(myHand.length === 0){
+        addLog("冇手牌可以送出！");
         return;
     }
-    const card = myHand.shift();
-    draw(myHand,1);
-    addLog(`✨仁德！交出【${card.name}】，摸一张牌！`);
+    waitingTarget = "rende";
+    selectedHandIndex = -1;
+    targetTip.innerText = "👉 拣一张手牌，再点敌方送出（仁德）";
+}
+// 仁德送牌俾敌方
+function rendeGiveCard(){
+    if(selectedHandIndex < 0) return;
+    const card = myHand.splice(selectedHandIndex,1)[0];
+    enemyHand.push(card);
+    rendeGiveCount += 1;
+    addLog(`仁德：你送出【${card.name}】俾敌方！`);
+    // 每送出2张，摸1张
+    if(rendeGiveCount % 2 === 0){
+        draw(myHand,1);
+        addLog(`仁德累积送出${rendeGiveCount}张，摸一张牌！`);
+    }
+    selectedHandIndex = -1;
+    waitingTarget = null;
+    targetTip.innerText = "";
     renderHand();
+    checkOver();
 }
 
 // ===== 出牌逻辑 =====
 function playCard(idx){
+    if(gameOver) return;
     if(!isMyTurn) return;
+    // 如果系仁德模式，唔进入出牌
+    if(waitingTarget === "rende"){
+        selectedHandIndex = idx;
+        renderHand();
+        targetTip.innerText = "👉 拣好牌啦！点敌方区域送出";
+        return;
+    }
+
     const c = myHand[idx];
     let useAsKill = false;
     let useAsShan = false;
@@ -252,12 +304,17 @@ function playCard(idx){
     // 需要目标
     if(c.name === "杀" || useAsKill){
         waitingTarget = {type:"kill", index:idx, useAsKill};
-        targetTip.innerText = "👉 拣目标：敌方";
+        targetTip.innerText = "👉 拣目标：敌方（杀）";
         return;
     }
-    if(c.name === "过河拆桥" || c.name === "决斗"){
-        waitingTarget = {type:c.name, index:idx};
-        targetTip.innerText = `👉 拣目标：敌方（${c.name}）`;
+    if(c.name === "过河拆桥"){
+        waitingTarget = {type:"qiao", index:idx};
+        targetTip.innerText = "👉 拣目标：敌方（过河拆桥）";
+        return;
+    }
+    if(c.name === "决斗"){
+        waitingTarget = {type:"jue", index:idx};
+        targetTip.innerText = `👉 拣目标：敌方（决斗）`;
         return;
     }
 
@@ -292,7 +349,15 @@ function playCard(idx){
 
 // 选择敌方目标
 function selectEnemyTarget(){
+    if(gameOver) return;
     if(!waitingTarget) return;
+
+    // 仁德送牌
+    if(waitingTarget === "rende"){
+        rendeGiveCard();
+        return;
+    }
+
     const w = waitingTarget;
     const c = myHand[w.index];
     if(!c) return;
@@ -317,15 +382,30 @@ function selectEnemyTarget(){
                 damageEnemy(1);
             }
         }
-    }else if(w.type === "过河拆桥"){
+    }else if(w.type === "qiao"){
         addLog(`你打出【过河拆桥】，目标敌方！`);
-        if(enemyHand.length > 0){
-            enemyHand.pop();
-            addLog("拆掉敌方一张手牌！");
+        let opt = prompt("拆敌方【手牌】输入 1，拆【装备】输入 2");
+        if(opt === "1"){
+            if(enemyHand.length>0){
+                enemyHand.pop();
+                addLog("拆掉敌方一张手牌！");
+            }else addLog("敌方冇手牌！");
+        }else if(opt === "2"){
+            if(enemyWeapon){
+                addLog(`拆掉武器【${enemyWeapon}】`);
+                enemyWeapon = null;
+            }else if(enemyArmor){
+                addLog(`拆掉防具【${enemyArmor}】`);
+                enemyArmor = null;
+            }else addLog("敌方冇装备可以拆！");
+            refreshEquipUI();
         }else{
-            addLog("敌方冇手牌可拆！");
+            addLog("取消过河拆桥");
+            waitingTarget = null;
+            targetTip.innerText = "";
+            return;
         }
-    }else if(w.type === "决斗"){
+    }else if(w.type === "jue"){
         addLog(`【决斗】！双方轮流出杀！`);
         let duelEnd = false;
         while(!duelEnd){
@@ -378,6 +458,7 @@ function damageMe(n){
 }
 
 function endMyTurn(){
+    if(gameOver) return;
     if(!isMyTurn) return;
     addLog("【弃牌阶段】手牌上限 = 当前血量 " + myHp);
     while(myHand.length > myHp){
@@ -389,12 +470,14 @@ function endMyTurn(){
     rendBtn.disabled = true;
     startBtn.disabled = false;
     endBtn.disabled = true;
+    rendeGiveCount = 0; // 仁德计数重置
     addLog("你的回合结束，敌方行动中…");
     setTimeout(enemyTurn, 800);
 }
 
 // ===== 敌方AI =====
 function enemyTurn(){
+    if(gameOver) return;
     addLog("===== 敌方回合开始 =====");
     const drawNum = enemyHero?.name === "诸葛亮" ? 3 : 2;
     draw(enemyHand, drawNum);
@@ -437,11 +520,20 @@ function enemyTurn(){
 
     // 敌方过河拆桥
     let qiaoIdx = enemyHand.findIndex(x=>x.name==="过河拆桥");
-    if(qiaoIdx !== -1 && myHand.length>0){
+    if(qiaoIdx !== -1 && (myHand.length>0 || myWeapon || myArmor)){
         addLog("敌方使用过河拆桥！");
         enemyHand.splice(qiaoIdx,1);
-        myHand.pop();
-        addLog("你被拆掉一张手牌！");
+        if(myHand.length>0){
+            myHand.pop();
+            addLog("你被拆掉一张手牌！");
+        }else if(myWeapon){
+            addLog(`敌方拆掉你武器${myWeapon}`);
+            myWeapon = null;
+        }else if(myArmor){
+            addLog(`敌方拆掉你防具${myArmor}`);
+            myArmor = null;
+        }
+        refreshEquipUI();
         renderHand();
     }
 
@@ -480,22 +572,26 @@ function enemyTurn(){
 
 function checkOver(){
     if(enemyHp <= 0){
-        addLog("🎉 敌方阵亡，你胜利！");
+        gameOver = true;
+        addLog("🎉 敌方阵亡，你胜利！游戏结束！");
         startBtn.disabled = true; endBtn.disabled = true; rendBtn.disabled=true;
     }else if(myHp <= 0){
-        addLog("💀 你阵亡，游戏失败！");
+        gameOver = true;
+        addLog("💀 你阵亡，游戏失败！游戏结束！");
         startBtn.disabled = true; endBtn.disabled = true; rendBtn.disabled=true;
     }
 }
 
 function startMyTurn(){
+    if(gameOver) return;
     if(!myHero){ addLog("请先拣选武将！"); return; }
     if(isMyTurn) return;
     isMyTurn = true;
     killUsedThisTurn = 0;
+    rendeGiveCount = 0;
     startBtn.disabled = true;
     endBtn.disabled = false;
-    rendBtn.disabled = myHero.name !== "刘备";
+    if(myHero.name === "刘备") rendBtn.disabled = false;
     const drawNum = myHero.name === "诸葛亮" ? 3 : 2;
     addLog(`===== 你的回合开始（摸牌阶段，摸${drawNum}张）=====`);
     draw(myHand, drawNum);
@@ -507,7 +603,7 @@ function restartGame(){
 }
 // 点击敌方区域触发目标选择
 document.querySelector(".player-info > div:nth-child(2)").addEventListener("click", ()=>{
-    if(waitingTarget){
+    if(waitingTarget && !gameOver){
         selectEnemyTarget();
     }
 });
