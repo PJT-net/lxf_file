@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>三国杀 · 过河拆桥显示卡牌名称</title>
+    <title>三国杀</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",sans-serif;}
         body{background:#2c2c2c;color:#fff;padding:20px;}
@@ -44,6 +44,8 @@
             padding:10px;margin:6px;background:#444;cursor:pointer;border-radius:6px;
         }
         .modal-card-item:hover{background:#555;}
+        .modal-card-item.selected{background:#ffd700;color:#222;}
+        .modal-card-item.disabled{background:#222;cursor:not-allowed;opacity:0.4;pointer-events:none;}
     </style>
 </head>
 <body>
@@ -140,6 +142,7 @@ let waitingTarget = null;
 let gameOver = false;
 let selectedHandIndex = -1;
 let rendeGiveCount = 0;
+let qiaoSelected = -1; // 过河拆桥选中标记
 
 const logDom = document.getElementById("gameLog");
 const handDom = document.getElementById("handCards");
@@ -268,7 +271,7 @@ function rendeGiveCard(){
     const card = myHand.splice(selectedHandIndex,1)[0];
     enemyHand.push(card);
     rendeGiveCount += 1;
-    addLog(`仁德：你送出【${card.name}】俾敌方！`);
+    addLog(`仁德：你送出一张牌俾敌方！`);
     if(rendeGiveCount % 2 === 0){
         draw(myHand,1);
         addLog(`仁德累积送出${rendeGiveCount}张，摸一张牌！`);
@@ -284,26 +287,42 @@ function rendeGiveCard(){
 function openQiaoModal(){
     qiaoModal.style.display = "flex";
     qiaoCardList.innerHTML = "";
+    qiaoSelected = -1;
 }
 function closeQiaoModal(){
     qiaoModal.style.display = "none";
     qiaoCardList.innerHTML = "";
     waitingTarget = null;
     targetTip.innerText = "";
+    qiaoSelected = -1;
 }
 function showEnemyHandList(){
-    qiaoCardList.innerHTML = "<p>👉 拣要拆嘅敌方手牌（点击卡牌）：</p>";
-    enemyHand.forEach((card,idx)=>{
+    qiaoCardList.innerHTML = `<p>👉 敌方一共有 ${enemyHand.length} 张手牌，请选择要拆嘅手牌：</p>`;
+    enemyHand.forEach((_,idx)=>{
         const item = document.createElement("div");
         item.className = "modal-card-item";
-        // 直接显示卡牌全名同类型
-        item.innerText = `【${card.name}】 ${card.type}`;
+        // 只显示序号，完全唔显示卡牌任何信息
+        item.innerText = `手牌 ${idx+1}`;
+
+        if(qiaoSelected !== -1){
+            if(qiaoSelected === idx){
+                item.classList.add("selected");
+            }else{
+                item.classList.add("disabled");
+            }
+        }
         item.onclick = ()=>{
-            enemyHand.splice(idx,1);
-            addLog(`过河拆桥！拆掉敌方手牌【${card.name}】`);
-            closeQiaoModal();
-            renderHand();
-            checkOver();
+            // 已经拣咗就唔再响应点击
+            if(qiaoSelected !== -1) return;
+            qiaoSelected = idx;
+            showEnemyHandList();
+            setTimeout(()=>{
+                enemyHand.splice(idx,1);
+                addLog(`过河拆桥！拆掉敌方一张手牌`);
+                closeQiaoModal();
+                renderHand();
+                checkOver();
+            },400);
         };
         qiaoCardList.appendChild(item);
     })
@@ -601,8 +620,8 @@ function enemyTurn(){
         enemyHand.splice(qiaoIdx,1);
         if(myHand.length>0){
             const delIdx = Math.floor(Math.random()*myHand.length);
-            const delCard = myHand.splice(delIdx,1)[0];
-            addLog(`敌方拆掉你手牌【${delCard.name}】`);
+            myHand.splice(delIdx,1);
+            addLog(`敌方拆掉你一张手牌`);
         }else if(myWeapon){
             addLog(`敌方拆掉你武器${myWeapon}`);
             myWeapon = null;
@@ -623,8 +642,8 @@ function enemyTurn(){
         if(myKill){
             const mk = myHand.findIndex(x=>x.name==="杀");
             myHand.splice(mk,1);
-            addLog("你打出杀抵御南蛮");
             renderHand();
+            addLog("你打出杀抵御南蛮");
         }else{
             damageMe(1);
         }
