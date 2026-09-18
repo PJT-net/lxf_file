@@ -76,7 +76,7 @@
                     <div class="hero-name" id="enemyHeroName">敌方未选</div>
                     <div>血量：<span class="hp" id="enemyHp">4</span></div>
                     <div class="card-count">敌方手牌数量：<span id="enemyCardCount">0</span></div>
-                    <div class="card-count">技能-tip" id="enemySkill"></div>
+                    <div class="skill-tip" id="enemySkill"></div>
                     <div class="equip-area">装备：<span id="enemyEquip">无</span></div>
                 </div>
             </div>
@@ -93,7 +93,7 @@
 
     <div class="log" id="gameLog">
         游戏开始！请先拣选一个武将。<br>
-        规则：回合分摸牌→出牌→弃牌；出【杀】需要拣目标，对方出【闪】抵消；手牌上限=当前血量。
+        规则：拣武将后双方各4张手牌；回合分摸牌→出牌→弃牌；出【杀】需要拣目标，对方出【闪】抵消；手牌上限=当前血量。
     </div>
 </div>
 
@@ -267,7 +267,7 @@ function selectHero(idx){
     enemyHero = heroList[eIdx];
     enemyHp = enemyHero.hp;
     document.getElementById("enemyHeroName").innerText = "敌方：" + enemyHero.name;
-    document.getElementById("enemyHp").innerText = enemyHp;
+    // 修复！之前多咗引号bug，敌方技能直接输出文字
     document.getElementById("enemySkill").innerText = "技能：" + enemyHero.skill;
     addLog(`敌方武将系【${enemyHero.name}】`);
 
@@ -281,10 +281,12 @@ function selectHero(idx){
         rendBtn.style.display = "none";
     }
 
+    // ✅复原开局：拣武将之后，双方各直接摸4张手牌
     draw(myHand, 4);
     draw(enemyHand, 4);
     refreshCardCount();
     renderHand();
+    addLog("开局完毕，双方各获得4张手牌，点击【开始你的回合】进入摸牌阶段");
 }
 function refreshEquipUI(){
     myEquipDom.innerText = (myWeapon||"无武器") + " | " + (myArmor||"无防具");
