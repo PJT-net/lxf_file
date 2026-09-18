@@ -93,7 +93,7 @@
 
     <div class="log" id="gameLog">
         游戏开始！请先拣选一个武将。<br>
-        规则：拣武将后双方各4张手牌；回合分摸牌→出牌→弃牌；出【杀】需要拣目标，对方出【闪】抵消；手牌上限=当前血量。
+        规则：拣武将后双方各4张手牌；回合分摸牌→出牌→弃牌；出【杀】需要拣目标，对方出【闪】抵消；手牌上限=当前血量，手牌≤血量则跳过弃牌阶段。
     </div>
 </div>
 
@@ -138,7 +138,7 @@ const cardProtoList = [
     {name:"过河拆桥", type:"锦囊", desc:"拣目标，可以拆对方手牌或者装备"},
     {name:"无中生有", type:"锦囊", desc:"立即摸2张牌"},
     {name:"南蛮入侵", type:"锦囊", desc:"敌方必须打出【杀】，否则扣1点伤害"},
-    {name:"决斗", type:"锦囊", desc:"双方轮流出杀，冇杀嘅一方扣1血"},
+    {name:"决斗", type:"锦囊", desc:"双方轮流出杀，冇杀嘅一方扣1血，【决斗】使用后直接消耗丢弃"},
     {name:"青釭剑", type:"武器", desc:"武器：攻击时无视防具效果"},
     {name:"八卦阵", type:"防具", desc:"防具：受到杀攻击，翻开牌堆顶判定，红色视为出闪"}
 ];
@@ -331,13 +331,24 @@ function renderHand(){
     refreshCardCount();
 }
 
-// ===== 弃牌阶段逻辑 =====
+// ===== 弃牌阶段逻辑【修改：手牌<=血量直接跳过弃牌】 =====
 function enterDiscardPhase(){
     if(gameOver) return;
     if(!isMyTurn) return;
+    const maxHand = myHp;
+    if(myHand.length <= maxHand){
+        addLog(`手牌数量${myHand.length} ≤ 手牌上限${maxHand}，无需弃牌，直接结束回合`);
+        isMyTurn = false;
+        rendBtn.disabled = true;
+        startBtn.disabled = false;
+        endBtn.disabled = true;
+        targetTip.innerText = "";
+        addLog("你的回合结束，敌方行动中…");
+        setTimeout(enemyTurn, 800);
+        return;
+    }
     discardPhase = true;
     discardSelected = [];
-    const maxHand = myHp;
     addLog(`【弃牌阶段】手牌上限 = ${maxHand}，你而家有${myHand.length}张手牌，请拣要弃嘅牌，拣完按【确认弃牌】`);
     targetTip.innerText = "👉 拣选要弃掉嘅手牌";
     endBtn.disabled = true;
@@ -636,7 +647,8 @@ function selectEnemyTarget(){
                 }
             }
         }
-        // 决斗结算完成，清空目标标记
+        // ✅决斗结算完直接消耗掉呢张决斗牌，用完就丢，唔可以重复使用
+        myHand.splice(w.index,1);
         waitingTarget = null;
         targetTip.innerText = "";
         renderHand();
