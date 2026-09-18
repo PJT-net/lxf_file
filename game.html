@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>三国杀</title>
+    <title>三国杀 · 过河拆桥显示卡牌名称</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",sans-serif;}
         body{background:#2c2c2c;color:#fff;padding:20px;}
@@ -39,9 +39,9 @@
             display:none;position:fixed;top:0;left:0;width:100%;height:100%;
             background:rgba(0,0,0,0.7);align-items:center;justify-content:center;
         }
-        .modal-box{background:#333;padding:20px;border-radius:10px;max-width:500px;}
+        .modal-box{background:#333;padding:20px;border-radius:10px;max-width:550px;}
         .modal-card-item{
-            padding:8px;margin:5px;background:#444;cursor:pointer;border-radius:4px;
+            padding:10px;margin:6px;background:#444;cursor:pointer;border-radius:6px;
         }
         .modal-card-item:hover{background:#555;}
     </style>
@@ -90,7 +90,7 @@
     </div>
 </div>
 
-<!-- 弹窗：过河拆桥选择 -->
+<!-- 过河拆桥弹窗 -->
 <div class="modal" id="qiaoModal">
     <div class="modal-box">
         <h3>过河拆桥，请选择要拆嘅类型</h3>
@@ -292,11 +292,12 @@ function closeQiaoModal(){
     targetTip.innerText = "";
 }
 function showEnemyHandList(){
-    qiaoCardList.innerHTML = "<p>拣要拆嘅敌方手牌：</p>";
+    qiaoCardList.innerHTML = "<p>👉 拣要拆嘅敌方手牌（点击卡牌）：</p>";
     enemyHand.forEach((card,idx)=>{
         const item = document.createElement("div");
         item.className = "modal-card-item";
-        item.innerText = `${card.name}（${card.type}）`;
+        // 直接显示卡牌全名同类型
+        item.innerText = `【${card.name}】 ${card.type}`;
         item.onclick = ()=>{
             enemyHand.splice(idx,1);
             addLog(`过河拆桥！拆掉敌方手牌【${card.name}】`);
