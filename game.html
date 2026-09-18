@@ -93,7 +93,7 @@
 
     <div class="log" id="gameLog">
         游戏开始！请先拣选一个武将。<br>
-        规则：拣武将后双方各4张手牌；回合分摸牌→出牌→弃牌；出【杀】需要拣目标，对方出【闪】抵消；手牌上限=当前血量，手牌≤血量则跳过弃牌阶段。
+        规则：拣武将后双方各4张手牌；回合分摸牌→出牌→弃牌；手牌上限等于当前剩余血量，受伤后上限同步降低。
     </div>
 </div>
 
@@ -172,6 +172,7 @@ let selectedHandIndex = -1;
 let rendeGiveCount = 0;
 let qiaoSelected = -1; // 过河拆桥选中标记
 let deck = []; // 牌库
+let discardPile = []; // 弃牌堆
 let discardPhase = false; // 是否进入弃牌阶段
 let discardSelected = []; // 弃牌选中的牌下标
 
@@ -194,9 +195,11 @@ function addLog(t){
     logDom.innerHTML += "<p>" + t + "</p>";
     logDom.scrollTop = logDom.scrollHeight;
 }
+
 // 初始化牌库
 function initDeck(){
     deck = [];
+    discardPile = [];
     for(let i=0;i<40;i++){
         deck.push(createCard());
     }
@@ -205,10 +208,27 @@ function initDeck(){
 function updateDeckCount(){
     deckCountDom.innerText = deck.length;
 }
+
+// 【新增】牌堆不足，将弃牌堆洗牌补入牌库
+function refillDeckIfEmpty(){
+    if(deck.length === 0 && discardPile.length > 0){
+        addLog("📦牌库用尽，将弃牌堆洗入牌库！");
+        // 洗牌
+        for(let i = discardPile.length -1; i>0; i--){
+            const j = Math.floor(Math.random()*(i+1));
+            [discardPile[i], discardPile[j]] = [discardPile[j], discardPile[i]];
+        }
+        deck = discardPile;
+        discardPile = [];
+        updateDeckCount();
+    }
+}
+
 // 判定：抽牌堆顶一张牌，返回判定牌
 function judgeCard(){
+    refillDeckIfEmpty();
     if(deck.length === 0){
-        addLog("⚠️ 牌库空咗，判定失败");
+        addLog("⚠️ 牌库同弃牌堆都冇牌！");
         return null;
     }
     const jCard = deck.pop();
@@ -219,6 +239,7 @@ function judgeCard(){
 
 function draw(arr, n){
     for(let i=0;i<n;i++){
+        refillDeckIfEmpty();
         if(deck.length === 0) {
             addLog("牌库已经空咗！");
             break;
@@ -227,6 +248,12 @@ function draw(arr, n){
     }
     updateDeckCount();
 }
+
+// 卡牌进入弃牌堆
+function discardCard(card){
+    discardPile.push(card);
+}
+
 function hasKillLimit(){
     return myHero && myHero.name !== "张飞";
 }
@@ -267,7 +294,6 @@ function selectHero(idx){
     enemyHero = heroList[eIdx];
     enemyHp = enemyHero.hp;
     document.getElementById("enemyHeroName").innerText = "敌方：" + enemyHero.name;
-    // 修复！之前多咗引号bug，敌方技能直接输出文字
     document.getElementById("enemySkill").innerText = "技能：" + enemyHero.skill;
     addLog(`敌方武将系【${enemyHero.name}】`);
 
@@ -281,7 +307,6 @@ function selectHero(idx){
         rendBtn.style.display = "none";
     }
 
-    // ✅复原开局：拣武将之后，双方各直接摸4张手牌
     draw(myHand, 4);
     draw(enemyHand, 4);
     refreshCardCount();
@@ -331,11 +356,11 @@ function renderHand(){
     refreshCardCount();
 }
 
-// ===== 弃牌阶段逻辑【修改：手牌<=血量直接跳过弃牌】 =====
+// ===== 弃牌阶段逻辑【修正：手牌上限=当前剩余血量】 =====
 function enterDiscardPhase(){
     if(gameOver) return;
     if(!isMyTurn) return;
-    const maxHand = myHp;
+    const maxHand = myHp; // 而家直接用当前血量作为手牌上限，扣血之后自动变
     if(myHand.length <= maxHand){
         addLog(`手牌数量${myHand.length} ≤ 手牌上限${maxHand}，无需弃牌，直接结束回合`);
         isMyTurn = false;
@@ -349,23 +374,24 @@ function enterDiscardPhase(){
     }
     discardPhase = true;
     discardSelected = [];
-    addLog(`【弃牌阶段】手牌上限 = ${maxHand}，你而家有${myHand.length}张手牌，请拣要弃嘅牌，拣完按【确认弃牌】`);
-    targetTip.innerText = "👉 拣选要弃掉嘅手牌";
+    addLog(`【弃牌阶段】手牌上限 = 当前血量${maxHand}，你而家有${myHand.length}张手牌，请拣要弃嘅牌，拣完按【确认弃牌】，需要保留${maxHand}张`);
+    targetTip.innerText = `👉 拣选要弃掉嘅手牌，最后保留${maxHand}张`;
     endBtn.disabled = true;
     confirmDiscardBtn.disabled = false;
     renderHand();
 }
 function confirmDiscard(){
     const maxHand = myHp;
-    let remain = myHand.length - discardSelected.length;
-    if(remain > maxHand){
-        addLog(`拣完之后手牌仍然多过上限，需要拣多啲牌弃掉！`);
+    const remainCount = myHand.length - discardSelected.length;
+    if(remainCount < maxHand){
+        addLog(`拣完之后手牌太少！至少保留${maxHand}张手牌！`);
         return;
     }
     // 从后往前删下标
     discardSelected.sort((a,b)=>b-a).forEach(idx=>{
         const card = myHand.splice(idx,1)[0];
-        addLog(`弃牌：【${card.suitSymbol}${card.rank} ${card.name}】`);
+        discardCard(card);
+        addLog(`弃牌：【${card.suitSymbol}${card.rank} ${card.name}】进入弃牌堆`);
     });
     discardPhase = false;
     discardSelected = [];
@@ -441,7 +467,8 @@ function showEnemyHandList(){
             showEnemyHandList();
             setTimeout(()=>{
                 const removedCard = enemyHand.splice(idx,1)[0];
-                addLog(`过河拆桥！拆掉敌方手牌【${removedCard.suitSymbol}${removedCard.rank} ${removedCard.name}】`);
+                discardCard(removedCard);
+                addLog(`过河拆桥！拆掉敌方手牌【${removedCard.suitSymbol}${removedCard.rank} ${removedCard.name}】进入弃牌堆`);
                 closeQiaoModal();
                 renderHand();
                 checkOver();
@@ -457,7 +484,8 @@ function showEnemyEquipList(){
         item.className = "modal-card-item";
         item.innerText = `武器：${enemyWeapon}`;
         item.onclick = ()=>{
-            addLog(`过河拆桥！拆掉敌方武器【${enemyWeapon}】`);
+            addLog(`过河拆桥！拆掉敌方武器【${enemyWeapon}】进入弃牌堆`);
+            discardCard({name:enemyWeapon, type:"武器"});
             enemyWeapon = null;
             refreshEquipUI();
             closeQiaoModal();
@@ -471,7 +499,8 @@ function showEnemyEquipList(){
         item.className = "modal-card-item";
         item.innerText = `防具：${enemyArmor}`;
         item.onclick = ()=>{
-            addLog(`过河拆桥！拆掉敌方防具【${enemyArmor}】`);
+            addLog(`过河拆桥！拆掉敌方防具【${enemyArmor}】进入弃牌堆`);
+            discardCard({name:enemyArmor, type:"防具"});
             enemyArmor = null;
             refreshEquipUI();
             closeQiaoModal();
@@ -569,12 +598,13 @@ function playCard(idx){
         if(enemyHasKill){
             const kidx = enemyHand.findIndex(x=>x.name==="杀");
             const usedCard = enemyHand.splice(kidx,1)[0];
+            discardCard(usedCard);
             addLog(`敌方打出【${usedCard.suitSymbol}${usedCard.rank} ${usedCard.name}】抵御南蛮！`);
         }else{
             damageEnemy(1);
         }
     }
-    myHand.splice(idx,1);
+    discardCard(myHand.splice(idx,1)[0]);
     renderHand();
     checkOver();
 }
@@ -610,19 +640,20 @@ function selectEnemyTarget(){
             let shanIdx = enemyHand.findIndex(x=>x.name==="闪");
             if(shanIdx !== -1){
                 const shanCard = enemyHand.splice(shanIdx,1)[0];
+                discardCard(shanCard);
                 addLog(`敌方打出【${shanCard.suitSymbol}${shanCard.rank} ${shanCard.name}】抵消！`);
             }else{
                 damageEnemy(1);
             }
         }
-        myHand.splice(w.index,1);
+        discardCard(myHand.splice(w.index,1)[0]);
         waitingTarget = null;
         targetTip.innerText = "";
         renderHand();
         checkOver();
     }else if(w.type === "qiao"){
         addLog(`你打出【${c.suitSymbol}${c.rank} ${c.name}】，目标敌方！`);
-        myHand.splice(w.index,1);
+        discardCard(myHand.splice(w.index,1)[0]);
         openQiaoModal();
     }else if(w.type === "jue"){
         addLog(`【决斗】！双方轮流出杀！`);
@@ -635,6 +666,7 @@ function selectEnemyTarget(){
                 duelEnd = true;
             }else{
                 const eCard = enemyHand.splice(ek,1)[0];
+                discardCard(eCard);
                 addLog(`敌方出【${eCard.suitSymbol}${eCard.rank} ${eCard.name}】！轮到你`);
                 let mk = myHand.findIndex(x=>x.name==="杀");
                 if(mk === -1){
@@ -643,12 +675,13 @@ function selectEnemyTarget(){
                     duelEnd = true;
                 }else{
                     const mCard = myHand.splice(mk,1)[0];
+                    discardCard(mCard);
                     addLog(`你出【${mCard.suitSymbol}${mCard.rank} ${mCard.name}】！继续决斗`);
                 }
             }
         }
         // ✅决斗结算完直接消耗掉呢张决斗牌，用完就丢，唔可以重复使用
-        myHand.splice(w.index,1);
+        discardCard(myHand.splice(w.index,1)[0]);
         waitingTarget = null;
         targetTip.innerText = "";
         renderHand();
@@ -700,7 +733,8 @@ function enemyTurn(){
     let killIdx = enemyHand.findIndex(x=>x.name==="杀");
     if(killIdx !== -1){
         addLog("敌方对你出【杀】！");
-        enemyHand.splice(killIdx,1);
+        const usedKill = enemyHand.splice(killIdx,1)[0];
+        discardCard(usedKill);
         refreshCardCount();
         let armorBlock = false;
         if(myArmor === "八卦阵" && enemyWeapon !== "青釭剑"){
@@ -716,6 +750,7 @@ function enemyTurn(){
             let myShan = myHand.findIndex(x=>x.name==="闪");
             if(myShan !== -1){
                 const shanCard = myHand.splice(myShan,1)[0];
+                discardCard(shanCard);
                 addLog(`你自动打出【${shanCard.suitSymbol}${shanCard.rank} ${shanCard.name}】抵消！`);
                 renderHand();
             }else{
@@ -727,16 +762,20 @@ function enemyTurn(){
     let qiaoIdx = enemyHand.findIndex(x=>x.name==="过河拆桥");
     if(qiaoIdx !== -1 && (myHand.length>0 || myWeapon || myArmor)){
         addLog("敌方使用【过河拆桥】！");
-        enemyHand.splice(qiaoIdx,1);
+        const qiaoCard = enemyHand.splice(qiaoIdx,1)[0];
+        discardCard(qiaoCard);
         if(myHand.length>0){
             const delIdx = Math.floor(Math.random()*myHand.length);
             const delCard = myHand.splice(delIdx,1)[0];
+            discardCard(delCard);
             addLog(`敌方拆掉你手牌【${delCard.suitSymbol}${delCard.rank} ${delCard.name}】`);
         }else if(myWeapon){
             addLog(`敌方拆掉你武器【${myWeapon}】`);
+            discardCard({name:myWeapon, type:"武器"});
             myWeapon = null;
         }else if(myArmor){
             addLog(`敌方拆掉你防具【${myArmor}】`);
+            discardCard({name:myArmor, type:"防具"});
             myArmor = null;
         }
         refreshEquipUI();
@@ -746,12 +785,14 @@ function enemyTurn(){
     let nanIdx = enemyHand.findIndex(x=>x.name==="南蛮入侵");
     if(nanIdx !== -1){
         addLog("敌方打出【南蛮入侵】！");
-        enemyHand.splice(nanIdx,1);
+        const nanCard = enemyHand.splice(nanIdx,1)[0];
+        discardCard(nanCard);
         refreshCardCount();
         let myKill = myHand.some(x=>x.name==="杀");
         if(myKill){
             const mk = myHand.findIndex(x=>x.name==="杀");
             const usedKill = myHand.splice(mk,1)[0];
+            discardCard(usedKill);
             renderHand();
             addLog(`你打出【${usedKill.suitSymbol}${usedKill.rank} ${usedKill.name}】抵御南蛮`);
         }else{
@@ -762,7 +803,8 @@ function enemyTurn(){
     if(enemyHp <= 2){
         let peach = enemyHand.findIndex(x=>x.name==="桃");
         if(peach !== -1 && enemyHp < enemyHero.hp){
-            enemyHand.splice(peach,1);
+            const peachCard = enemyHand.splice(peach,1)[0];
+            discardCard(peachCard);
             enemyHp++;
             document.getElementById("enemyHp").innerText = enemyHp;
             addLog("敌方食【桃】回血！");
@@ -770,7 +812,11 @@ function enemyTurn(){
         }
     }
 
-    while(enemyHand.length > enemyHp) enemyHand.pop();
+    // 敌方弃牌逻辑同步更新：弃到等于当前血量
+    while(enemyHand.length > enemyHp){
+        const discardCardObj = enemyHand.pop();
+        discardCard(discardCardObj);
+    }
     refreshCardCount();
     addLog("敌方回合结束，轮到你。");
     checkOver();
