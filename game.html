@@ -63,6 +63,7 @@
                 <div class="hero-name" id="myHeroName">未选武将</div>
                 <div>血量：<span class="hp" id="myHp">4</span></div>
                 <div class="card-count">我方手牌数量：<span id="myCardCount">0</span></div>
+                <div class="card-count">牌库剩余：<span id="deckCount">0</span></div>
                 <div class="skill-tip" id="mySkill"></div>
                 <div class="equip-area">装备：<span id="myEquip">无</span></div>
                 <button class="btn skill-btn" id="rendBtn" onclick="useRende()">仁德</button>
@@ -83,7 +84,8 @@
     </div>
 
     <button class="btn" id="startTurnBtn" onclick="startMyTurn()">开始你的回合</button>
-    <button class="btn" id="endTurnBtn" onclick="endMyTurn()" disabled>结束回合</button>
+    <button class="btn" id="endTurnBtn" onclick="enterDiscardPhase()" disabled>结束回合（进入弃牌）</button>
+    <button class="btn" id="confirmDiscardBtn" onclick="confirmDiscard()" disabled>确认弃牌</button>
     <button class="btn" onclick="restartGame()">重新开始</button>
 
     <div class="log" id="gameLog">
@@ -143,17 +145,22 @@ let gameOver = false;
 let selectedHandIndex = -1;
 let rendeGiveCount = 0;
 let qiaoSelected = -1; // 过河拆桥选中标记
+let deck = []; // 牌库
+let discardPhase = false; // 是否进入弃牌阶段
+let discardSelected = []; // 弃牌选中的牌下标
 
 const logDom = document.getElementById("gameLog");
 const handDom = document.getElementById("handCards");
 const startBtn = document.getElementById("startTurnBtn");
 const endBtn = document.getElementById("endTurnBtn");
+const confirmDiscardBtn = document.getElementById("confirmDiscardBtn");
 const rendBtn = document.getElementById("rendBtn");
 const targetTip = document.getElementById("targetTip");
 const myEquipDom = document.getElementById("myEquip");
 const enemyEquipDom = document.getElementById("enemyEquip");
 const myCardCountDom = document.getElementById("myCardCount");
 const enemyCardCountDom = document.getElementById("enemyCardCount");
+const deckCountDom = document.getElementById("deckCount");
 const qiaoModal = document.getElementById("qiaoModal");
 const qiaoCardList = document.getElementById("qiaoCardList");
 
@@ -161,11 +168,26 @@ function addLog(t){
     logDom.innerHTML += "<p>" + t + "</p>";
     logDom.scrollTop = logDom.scrollHeight;
 }
-function randomCard(){
-    return {...cardList[Math.floor(Math.random()*cardList.length)]};
+// 初始化牌库
+function initDeck(){
+    deck = [];
+    for(let i=0;i<40;i++){
+        deck.push({...cardList[Math.floor(Math.random()*cardList.length)]});
+    }
+    updateDeckCount();
+}
+function updateDeckCount(){
+    deckCountDom.innerText = deck.length;
 }
 function draw(arr, n){
-    for(let i=0;i<n;i++) arr.push(randomCard());
+    for(let i=0;i<n;i++){
+        if(deck.length === 0) {
+            addLog("牌库已经空咗！");
+            break;
+        }
+        arr.push(deck.pop());
+    }
+    updateDeckCount();
 }
 function hasKillLimit(){
     return myHero && myHero.name !== "张飞";
@@ -195,6 +217,9 @@ function selectHero(idx){
     gameOver = false;
     rendeGiveCount = 0;
     selectedHandIndex = -1;
+    discardPhase = false;
+    discardSelected = [];
+    initDeck();
     document.getElementById("myHeroName").innerText = "你：" + myHero.name;
     document.getElementById("myHp").innerText = myHp;
     document.getElementById("mySkill").innerText = "技能：" + myHero.skill;
@@ -235,23 +260,70 @@ function renderHand(){
         const d = document.createElement("div");
         d.className = "card";
         if(idx === selectedHandIndex) d.classList.add("selected");
+        if(discardSelected.includes(idx)) d.classList.add("selected");
         d.innerHTML = `<div class="name">${c.name}</div>
                        <div class="type">${c.type}</div>
                        <div class="desc">${c.desc}</div>`;
         if(isMyTurn && !gameOver){
-            d.onclick = ()=>{
-                if(waitingTarget === "rende"){
-                    selectedHandIndex = idx;
+            if(discardPhase){
+                d.onclick = ()=>{
+                    if(discardSelected.includes(idx)){
+                        discardSelected = discardSelected.filter(x=>x!==idx);
+                    }else{
+                        discardSelected.push(idx);
+                    }
                     renderHand();
-                    targetTip.innerText = "👉 拣好牌啦！点敌方区域送出";
-                }else{
-                    playCard(idx);
                 }
-            };
+            }else if(waitingTarget === "rende"){
+                selectedHandIndex = idx;
+                renderHand();
+                targetTip.innerText = "👉 拣好牌啦！点敌方区域送出";
+            }else{
+                d.onclick = ()=>{
+                    playCard(idx);
+                };
+            }
         }
         handDom.appendChild(d);
     });
     refreshCardCount();
+}
+
+// ===== 弃牌阶段逻辑 =====
+function enterDiscardPhase(){
+    if(gameOver) return;
+    if(!isMyTurn) return;
+    discardPhase = true;
+    discardSelected = [];
+    const maxHand = myHp;
+    addLog(`【弃牌阶段】手牌上限 = ${maxHand}，你而家有${myHand.length}张手牌，请拣要弃嘅牌，拣完按【确认弃牌】`);
+    targetTip.innerText = "👉 拣选要弃掉嘅手牌";
+    endBtn.disabled = true;
+    confirmDiscardBtn.disabled = false;
+    renderHand();
+}
+function confirmDiscard(){
+    const maxHand = myHp;
+    let remain = myHand.length - discardSelected.length;
+    if(remain > maxHand){
+        addLog(`拣完之后手牌仍然多过上限，需要拣多啲牌弃掉！`);
+        return;
+    }
+    // 从后往前删下标
+    discardSelected.sort((a,b)=>b-a).forEach(idx=>{
+        const card = myHand.splice(idx,1)[0];
+        addLog(`弃牌：【${card.name}】`);
+    });
+    discardPhase = false;
+    discardSelected = [];
+    confirmDiscardBtn.disabled = true;
+    targetTip.innerText = "";
+    renderHand();
+    isMyTurn = false;
+    rendBtn.disabled = true;
+    startBtn.disabled = false;
+    addLog("你的回合结束，敌方行动中…");
+    setTimeout(enemyTurn, 800);
 }
 
 // ===== 刘备仁德技能 =====
@@ -271,7 +343,7 @@ function rendeGiveCard(){
     const card = myHand.splice(selectedHandIndex,1)[0];
     enemyHand.push(card);
     rendeGiveCount += 1;
-    addLog(`仁德：你送出一张牌俾敌方！`);
+    addLog(`仁德：你送出【${card.name}】俾敌方！`);
     if(rendeGiveCount % 2 === 0){
         draw(myHand,1);
         addLog(`仁德累积送出${rendeGiveCount}张，摸一张牌！`);
@@ -301,7 +373,7 @@ function showEnemyHandList(){
     enemyHand.forEach((_,idx)=>{
         const item = document.createElement("div");
         item.className = "modal-card-item";
-        // 只显示序号，完全唔显示卡牌任何信息
+        // 只显示序号，唔显示卡牌名称
         item.innerText = `手牌 ${idx+1}`;
 
         if(qiaoSelected !== -1){
@@ -312,13 +384,12 @@ function showEnemyHandList(){
             }
         }
         item.onclick = ()=>{
-            // 已经拣咗就唔再响应点击
             if(qiaoSelected !== -1) return;
             qiaoSelected = idx;
             showEnemyHandList();
             setTimeout(()=>{
-                enemyHand.splice(idx,1);
-                addLog(`过河拆桥！拆掉敌方一张手牌`);
+                const removedCard = enemyHand.splice(idx,1)[0];
+                addLog(`过河拆桥！拆掉敌方手牌【${removedCard.name}】`);
                 closeQiaoModal();
                 renderHand();
                 checkOver();
@@ -445,8 +516,8 @@ function playCard(idx){
         let enemyHasKill = enemyHand.some(x=>x.name==="杀");
         if(enemyHasKill){
             const kidx = enemyHand.findIndex(x=>x.name==="杀");
-            enemyHand.splice(kidx,1);
-            addLog("敌方打出【杀】抵御南蛮！");
+            const usedCard = enemyHand.splice(kidx,1)[0];
+            addLog(`敌方打出【${usedCard.name}】抵御南蛮！`);
         }else{
             damageEnemy(1);
         }
@@ -484,8 +555,8 @@ function selectEnemyTarget(){
         if(!armorBlock){
             let shanIdx = enemyHand.findIndex(x=>x.name==="闪");
             if(shanIdx !== -1){
-                addLog("敌方打出【闪】抵消！");
-                enemyHand.splice(shanIdx,1);
+                const shanCard = enemyHand.splice(shanIdx,1)[0];
+                addLog(`敌方打出【${shanCard.name}】抵消！`);
             }else{
                 damageEnemy(1);
             }
@@ -496,7 +567,7 @@ function selectEnemyTarget(){
         renderHand();
         checkOver();
     }else if(w.type === "qiao"){
-        addLog(`你打出【过河拆桥】，目标敌方！`);
+        addLog(`你打出【${c.name}】，目标敌方！`);
         myHand.splice(w.index,1);
         openQiaoModal();
     }else if(w.type === "jue"){
@@ -509,20 +580,19 @@ function selectEnemyTarget(){
                 damageEnemy(1);
                 duelEnd = true;
             }else{
-                enemyHand.splice(ek,1);
-                addLog("敌方出杀！轮到你");
+                const eCard = enemyHand.splice(ek,1)[0];
+                addLog(`敌方出【${eCard.name}】！轮到你`);
                 let mk = myHand.findIndex(x=>x.name==="杀");
                 if(mk === -1){
                     addLog("你冇杀，受到1点伤害！");
                     damageMe(1);
                     duelEnd = true;
                 }else{
-                    myHand.splice(mk,1);
-                    addLog("你出杀！继续决斗");
+                    const mCard = myHand.splice(mk,1)[0];
+                    addLog(`你出【${mCard.name}】！继续决斗`);
                 }
             }
         }
-        myHand.splice(w.index,1);
         waitingTarget = null;
         targetTip.innerText = "";
         renderHand();
@@ -550,24 +620,6 @@ function damageMe(n){
         addLog("✨ 你的【遗计】触发，摸2张牌！");
         renderHand();
     }
-}
-
-function endMyTurn(){
-    if(gameOver) return;
-    if(!isMyTurn) return;
-    addLog("【弃牌阶段】手牌上限 = 当前血量 " + myHp);
-    while(myHand.length > myHp){
-        myHand.pop();
-        addLog("手牌过多，自动弃一张");
-    }
-    renderHand();
-    isMyTurn = false;
-    rendBtn.disabled = true;
-    startBtn.disabled = false;
-    endBtn.disabled = true;
-    rendeGiveCount = 0;
-    addLog("你的回合结束，敌方行动中…");
-    setTimeout(enemyTurn, 800);
 }
 
 // ===== 敌方AI =====
@@ -605,8 +657,8 @@ function enemyTurn(){
         if(!armorBlock){
             let myShan = myHand.findIndex(x=>x.name==="闪");
             if(myShan !== -1){
-                addLog("你自动打出【闪】抵消！");
-                myHand.splice(myShan,1);
+                const shanCard = myHand.splice(myShan,1)[0];
+                addLog(`你自动打出【${shanCard.name}】抵消！`);
                 renderHand();
             }else{
                 damageMe(1);
@@ -616,17 +668,17 @@ function enemyTurn(){
 
     let qiaoIdx = enemyHand.findIndex(x=>x.name==="过河拆桥");
     if(qiaoIdx !== -1 && (myHand.length>0 || myWeapon || myArmor)){
-        addLog("敌方使用过河拆桥！");
+        addLog("敌方使用【过河拆桥】！");
         enemyHand.splice(qiaoIdx,1);
         if(myHand.length>0){
             const delIdx = Math.floor(Math.random()*myHand.length);
-            myHand.splice(delIdx,1);
-            addLog(`敌方拆掉你一张手牌`);
+            const delCard = myHand.splice(delIdx,1)[0];
+            addLog(`敌方拆掉你手牌【${delCard.name}】`);
         }else if(myWeapon){
-            addLog(`敌方拆掉你武器${myWeapon}`);
+            addLog(`敌方拆掉你武器【${myWeapon}】`);
             myWeapon = null;
         }else if(myArmor){
-            addLog(`敌方拆掉你防具${myArmor}`);
+            addLog(`敌方拆掉你防具【${myArmor}】`);
             myArmor = null;
         }
         refreshEquipUI();
@@ -635,15 +687,15 @@ function enemyTurn(){
 
     let nanIdx = enemyHand.findIndex(x=>x.name==="南蛮入侵");
     if(nanIdx !== -1){
-        addLog("敌方打出南蛮入侵！");
+        addLog("敌方打出【南蛮入侵】！");
         enemyHand.splice(nanIdx,1);
         refreshCardCount();
         let myKill = myHand.some(x=>x.name==="杀");
         if(myKill){
             const mk = myHand.findIndex(x=>x.name==="杀");
-            myHand.splice(mk,1);
+            const usedKill = myHand.splice(mk,1)[0];
             renderHand();
-            addLog("你打出杀抵御南蛮");
+            addLog(`你打出【${usedKill.name}】抵御南蛮`);
         }else{
             damageMe(1);
         }
@@ -655,7 +707,7 @@ function enemyTurn(){
             enemyHand.splice(peach,1);
             enemyHp++;
             document.getElementById("enemyHp").innerText = enemyHp;
-            addLog("敌方食桃回血！");
+            addLog("敌方食【桃】回血！");
             refreshCardCount();
         }
     }
@@ -670,11 +722,11 @@ function checkOver(){
     if(enemyHp <= 0){
         gameOver = true;
         addLog("🎉 敌方阵亡，你胜利！游戏结束！");
-        startBtn.disabled = true; endBtn.disabled = true; rendBtn.disabled=true;
+        startBtn.disabled = true; endBtn.disabled = true; rendBtn.disabled=true; confirmDiscardBtn.disabled=true;
     }else if(myHp <= 0){
         gameOver = true;
         addLog("💀 你阵亡，游戏失败！游戏结束！");
-        startBtn.disabled = true; endBtn.disabled = true; rendBtn.disabled=true;
+        startBtn.disabled = true; endBtn.disabled = true; rendBtn.disabled=true; confirmDiscardBtn.disabled=true;
     }
 }
 
