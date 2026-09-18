@@ -25,6 +25,9 @@
         .card:hover{transform:translateY(-6px);}
         .card.selected{box-shadow:0 0 0 4px #ffd700;}
         .card .name{font-weight:bold;font-size:15px;text-align:center;margin-bottom:5px;}
+        .card .suit{font-size:16px;text-align:center; font-weight:bold;}
+        .red{color:#d00000;}
+        .black{color:#111111;}
         .card .type{font-size:12px;color:#666;text-align:center;}
         .card .desc{font-size:11px;margin-top:6px;line-height:1.35}
         .btn{padding:9px 18px;background:#c41e3a;color:white;border:none;border-radius:6px;font-size:15px;cursor:pointer;margin:4px;}
@@ -73,7 +76,7 @@
                     <div class="hero-name" id="enemyHeroName">敌方未选</div>
                     <div>血量：<span class="hp" id="enemyHp">4</span></div>
                     <div class="card-count">敌方手牌数量：<span id="enemyCardCount">0</span></div>
-                    <div class="skill-tip" id="enemySkill"></div>
+                    <div class="card-count">技能-tip" id="enemySkill"></div>
                     <div class="equip-area">装备：<span id="enemyEquip">无</span></div>
                 </div>
             </div>
@@ -118,8 +121,17 @@ const heroList = [
     {name:"诸葛亮", hp:3, skill:"观星：回合开始摸3张牌，代替2张"}
 ];
 
-// ===== 卡牌库 =====
-const cardList = [
+// ===== 花色定义 =====
+const suitList = [
+    {symbol:"♥", color:"red", name:"红桃"},
+    {symbol:"♦", color:"red", name:"方块"},
+    {symbol:"♠", color:"black", name:"黑桃"},
+    {symbol:"♣", color:"black", name:"梅花"},
+];
+const rankList = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+
+// ===== 卡牌模板库 =====
+const cardProtoList = [
     {name:"杀", type:"基本牌", desc:"拣目标使用，对方不出闪则扣1血"},
     {name:"闪", type:"基本牌", desc:"抵消【杀】，不可主动打出（赵云/关羽可转换）"},
     {name:"桃", type:"基本牌", desc:"回复1点血量（唔超上限）"},
@@ -128,8 +140,22 @@ const cardList = [
     {name:"南蛮入侵", type:"锦囊", desc:"敌方必须打出【杀】，否则扣1点伤害"},
     {name:"决斗", type:"锦囊", desc:"双方轮流出杀，冇杀嘅一方扣1血"},
     {name:"青釭剑", type:"武器", desc:"武器：攻击时无视防具效果"},
-    {name:"八卦阵", type:"防具", desc:"防具：受到杀攻击，50%自动出闪"}
+    {name:"八卦阵", type:"防具", desc:"防具：受到杀攻击，翻开牌堆顶判定，红色视为出闪"}
 ];
+
+// 生成带花色点数嘅卡牌
+function createCard(){
+    const suit = suitList[Math.floor(Math.random()*suitList.length)];
+    const rank = rankList[Math.floor(Math.random()*rankList.length)];
+    const proto = cardProtoList[Math.floor(Math.random()*cardProtoList.length)];
+    return {
+        ...proto,
+        suitSymbol:suit.symbol,
+        suitColor:suit.color,
+        suitName:suit.name,
+        rank:rank
+    };
+}
 
 // ===== 游戏状态 =====
 let myHero = null;
@@ -172,13 +198,25 @@ function addLog(t){
 function initDeck(){
     deck = [];
     for(let i=0;i<40;i++){
-        deck.push({...cardList[Math.floor(Math.random()*cardList.length)]});
+        deck.push(createCard());
     }
     updateDeckCount();
 }
 function updateDeckCount(){
     deckCountDom.innerText = deck.length;
 }
+// 判定：抽牌堆顶一张牌，返回判定牌
+function judgeCard(){
+    if(deck.length === 0){
+        addLog("⚠️ 牌库空咗，判定失败");
+        return null;
+    }
+    const jCard = deck.pop();
+    updateDeckCount();
+    addLog(`🔍判定牌：${jCard.suitSymbol}${jCard.rank}【${jCard.suitName}，${jCard.name}】`);
+    return jCard;
+}
+
 function draw(arr, n){
     for(let i=0;i<n;i++){
         if(deck.length === 0) {
@@ -253,7 +291,7 @@ function refreshEquipUI(){
     enemyEquipDom.innerText = (enemyWeapon||"无武器") + " | " + (enemyArmor||"无防具");
 }
 
-// ===== 渲染手牌 =====
+// ===== 渲染手牌（显示花色） =====
 function renderHand(){
     handDom.innerHTML = "";
     myHand.forEach((c, idx)=>{
@@ -261,9 +299,11 @@ function renderHand(){
         d.className = "card";
         if(idx === selectedHandIndex) d.classList.add("selected");
         if(discardSelected.includes(idx)) d.classList.add("selected");
-        d.innerHTML = `<div class="name">${c.name}</div>
-                       <div class="type">${c.type}</div>
-                       <div class="desc">${c.desc}</div>`;
+        d.innerHTML = `
+            <div class="suit ${c.suitColor}">${c.suitSymbol}${c.rank}</div>
+            <div class="name">${c.name}</div>
+            <div class="type">${c.type}</div>
+            <div class="desc">${c.desc}</div>`;
         if(isMyTurn && !gameOver){
             if(discardPhase){
                 d.onclick = ()=>{
@@ -312,7 +352,7 @@ function confirmDiscard(){
     // 从后往前删下标
     discardSelected.sort((a,b)=>b-a).forEach(idx=>{
         const card = myHand.splice(idx,1)[0];
-        addLog(`弃牌：【${card.name}】`);
+        addLog(`弃牌：【${card.suitSymbol}${card.rank} ${card.name}】`);
     });
     discardPhase = false;
     discardSelected = [];
@@ -343,7 +383,7 @@ function rendeGiveCard(){
     const card = myHand.splice(selectedHandIndex,1)[0];
     enemyHand.push(card);
     rendeGiveCount += 1;
-    addLog(`仁德：你送出【${card.name}】俾敌方！`);
+    addLog(`仁德：你送出【${card.suitSymbol}${card.rank} ${card.name}】俾敌方！`);
     if(rendeGiveCount % 2 === 0){
         draw(myHand,1);
         addLog(`仁德累积送出${rendeGiveCount}张，摸一张牌！`);
@@ -373,7 +413,6 @@ function showEnemyHandList(){
     enemyHand.forEach((_,idx)=>{
         const item = document.createElement("div");
         item.className = "modal-card-item";
-        // 只显示序号，唔显示卡牌名称
         item.innerText = `手牌 ${idx+1}`;
 
         if(qiaoSelected !== -1){
@@ -389,7 +428,7 @@ function showEnemyHandList(){
             showEnemyHandList();
             setTimeout(()=>{
                 const removedCard = enemyHand.splice(idx,1)[0];
-                addLog(`过河拆桥！拆掉敌方手牌【${removedCard.name}】`);
+                addLog(`过河拆桥！拆掉敌方手牌【${removedCard.suitSymbol}${removedCard.rank} ${removedCard.name}】`);
                 closeQiaoModal();
                 renderHand();
                 checkOver();
@@ -469,7 +508,7 @@ function playCard(idx){
     if(c.type === "武器"){
         myWeapon = c.name;
         myHand.splice(idx,1);
-        addLog(`装备【${c.name}】！`);
+        addLog(`装备【${c.suitSymbol}${c.rank} ${c.name}】！`);
         refreshEquipUI();
         renderHand();
         return;
@@ -477,7 +516,7 @@ function playCard(idx){
     if(c.type === "防具"){
         myArmor = c.name;
         myHand.splice(idx,1);
-        addLog(`装备【${c.name}】！`);
+        addLog(`装备【${c.suitSymbol}${c.rank} ${c.name}】！`);
         refreshEquipUI();
         renderHand();
         return;
@@ -499,7 +538,7 @@ function playCard(idx){
         return;
     }
 
-    addLog(`你打出【${c.name}】`);
+    addLog(`你打出【${c.suitSymbol}${c.rank} ${c.name}】`);
     if(c.name === "桃"){
         if(myHp < myHero.hp){
             myHp++;
@@ -517,7 +556,7 @@ function playCard(idx){
         if(enemyHasKill){
             const kidx = enemyHand.findIndex(x=>x.name==="杀");
             const usedCard = enemyHand.splice(kidx,1)[0];
-            addLog(`敌方打出【${usedCard.name}】抵御南蛮！`);
+            addLog(`敌方打出【${usedCard.suitSymbol}${usedCard.rank} ${usedCard.name}】抵御南蛮！`);
         }else{
             damageEnemy(1);
         }
@@ -543,20 +582,22 @@ function selectEnemyTarget(){
 
     if(w.type === "kill"){
         killUsedThisTurn++;
-        addLog(`你打出【${c.name}】攻击敌方！`);
+        addLog(`你打出【${c.suitSymbol}${c.rank} ${c.name}】攻击敌方！`);
         let armorBlock = false;
         if(enemyArmor === "八卦阵" && enemyWeapon !== "青釭剑"){
-            const luck = Math.random() > 0.5;
-            if(luck){
-                addLog("敌方八卦阵生效，自动出闪！");
+            const jCard = judgeCard();
+            if(jCard && jCard.suitColor === "red"){
+                addLog("✅八卦阵判定红色，视为打出闪！");
                 armorBlock = true;
+            }else{
+                addLog("❌八卦阵判定黑色，判定失败！");
             }
         }
         if(!armorBlock){
             let shanIdx = enemyHand.findIndex(x=>x.name==="闪");
             if(shanIdx !== -1){
                 const shanCard = enemyHand.splice(shanIdx,1)[0];
-                addLog(`敌方打出【${shanCard.name}】抵消！`);
+                addLog(`敌方打出【${shanCard.suitSymbol}${shanCard.rank} ${shanCard.name}】抵消！`);
             }else{
                 damageEnemy(1);
             }
@@ -567,7 +608,7 @@ function selectEnemyTarget(){
         renderHand();
         checkOver();
     }else if(w.type === "qiao"){
-        addLog(`你打出【${c.name}】，目标敌方！`);
+        addLog(`你打出【${c.suitSymbol}${c.rank} ${c.name}】，目标敌方！`);
         myHand.splice(w.index,1);
         openQiaoModal();
     }else if(w.type === "jue"){
@@ -581,7 +622,7 @@ function selectEnemyTarget(){
                 duelEnd = true;
             }else{
                 const eCard = enemyHand.splice(ek,1)[0];
-                addLog(`敌方出【${eCard.name}】！轮到你`);
+                addLog(`敌方出【${eCard.suitSymbol}${eCard.rank} ${eCard.name}】！轮到你`);
                 let mk = myHand.findIndex(x=>x.name==="杀");
                 if(mk === -1){
                     addLog("你冇杀，受到1点伤害！");
@@ -589,10 +630,11 @@ function selectEnemyTarget(){
                     duelEnd = true;
                 }else{
                     const mCard = myHand.splice(mk,1)[0];
-                    addLog(`你出【${mCard.name}】！继续决斗`);
+                    addLog(`你出【${mCard.suitSymbol}${mCard.rank} ${mCard.name}】！继续决斗`);
                 }
             }
         }
+        // 决斗结算完成，清空目标标记
         waitingTarget = null;
         targetTip.innerText = "";
         renderHand();
@@ -636,7 +678,7 @@ function enemyTurn(){
         if(ec.type === "武器") enemyWeapon = ec.name;
         if(ec.type === "防具") enemyArmor = ec.name;
         enemyHand.splice(equipIdx,1);
-        addLog(`敌方装备【${ec.name}】`);
+        addLog(`敌方装备【${ec.suitSymbol}${ec.rank} ${ec.name}】`);
         refreshEquipUI();
         refreshCardCount();
     }
@@ -648,17 +690,19 @@ function enemyTurn(){
         refreshCardCount();
         let armorBlock = false;
         if(myArmor === "八卦阵" && enemyWeapon !== "青釭剑"){
-            const luck = Math.random() > 0.5;
-            if(luck){
-                addLog("你的八卦阵生效，自动出闪！");
+            const jCard = judgeCard();
+            if(jCard && jCard.suitColor === "red"){
+                addLog("✅你八卦阵判定红色，视为打出闪！");
                 armorBlock = true;
+            }else{
+                addLog("❌你八卦阵判定黑色，判定失败！");
             }
         }
         if(!armorBlock){
             let myShan = myHand.findIndex(x=>x.name==="闪");
             if(myShan !== -1){
                 const shanCard = myHand.splice(myShan,1)[0];
-                addLog(`你自动打出【${shanCard.name}】抵消！`);
+                addLog(`你自动打出【${shanCard.suitSymbol}${shanCard.rank} ${shanCard.name}】抵消！`);
                 renderHand();
             }else{
                 damageMe(1);
@@ -673,7 +717,7 @@ function enemyTurn(){
         if(myHand.length>0){
             const delIdx = Math.floor(Math.random()*myHand.length);
             const delCard = myHand.splice(delIdx,1)[0];
-            addLog(`敌方拆掉你手牌【${delCard.name}】`);
+            addLog(`敌方拆掉你手牌【${delCard.suitSymbol}${delCard.rank} ${delCard.name}】`);
         }else if(myWeapon){
             addLog(`敌方拆掉你武器【${myWeapon}】`);
             myWeapon = null;
@@ -695,7 +739,7 @@ function enemyTurn(){
             const mk = myHand.findIndex(x=>x.name==="杀");
             const usedKill = myHand.splice(mk,1)[0];
             renderHand();
-            addLog(`你打出【${usedKill.name}】抵御南蛮`);
+            addLog(`你打出【${usedKill.suitSymbol}${usedKill.rank} ${usedKill.name}】抵御南蛮`);
         }else{
             damageMe(1);
         }
